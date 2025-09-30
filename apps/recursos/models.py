@@ -37,7 +37,7 @@ class Libro(models.Model):
         estado = "Disponible" if self.esta_disponible else "No disponible"
         return f"{self.titulo} ({estado})"
 
-class Bienes(models.Model):
+class BienMaterial(models.Model):
     TIPO_BIEN = (
         ('MOVIL', 'Móvil'),
         ('INMOVIL', 'Inmóvil'),
