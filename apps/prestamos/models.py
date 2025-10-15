@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 from apps.usuarios.models import PerfilUsuario
 from apps.recursos.models import Recurso
 
@@ -24,20 +25,18 @@ class Prestamo(models.Model):
         return f"Préstamo {self.id} - {self.usuario.nombre} {self.usuario.apellido} ({self.estado})"
 
     def save(self, *args, **kwargs):
-        if self.pk:  # Ya existe → revisar si el estado cambió
-            prestamo_anterior = Prestamo.objects.get(pk=self.pk)
-            if prestamo_anterior.estado != self.estado:
-                if self.estado == "ACTIVO" and self.recurso.cantidad > 0:
-                    self.recurso.cantidad -= 1
-                    self.recurso.save()
-                elif self.estado == "FINALIZADO" and prestamo_anterior.estado == "ACTIVO":
-                    self.recurso.cantidad += 1
-                    self.recurso.save()
-        else:
-            # Nuevo préstamo
-            if self.estado == "ACTIVO" and self.recurso.cantidad > 0:
-                self.recurso.cantidad -= 1
-                self.recurso.save()
+        # Si se activa un préstamo → restar stock
+        if self.estado == "ACTIVO" and self.recurso.cantidad > 0:
+            self.recurso.cantidad = max(0, self.recurso.cantidad - 1)
+            self.recurso.save()
+
+        # Si finaliza → devolver stock
+        if self.estado == "FINALIZADO":
+            self.recurso.cantidad += 1
+            self.recurso.save()
+            # Guardar fecha de devolución automáticamente
+            if not self.fecha_devolucion:
+                self.fecha_devolucion = timezone.now()
 
         super().save(*args, **kwargs)
 
@@ -62,21 +61,20 @@ class Reserva(models.Model):
         return f"Reserva {self.id} - {self.usuario.nombre} {self.usuario.apellido} ({self.estado})"
 
     def save(self, *args, **kwargs):
-        if self.pk:  # Ya existe → revisar cambio de estado
-            reserva_anterior = Reserva.objects.get(pk=self.pk)
-            if reserva_anterior.estado != self.estado:
-                if self.estado == "ACEPTADA" and self.recurso.cantidad > 0:
-                    self.recurso.cantidad -= 1
-                    self.recurso.save()
-                elif self.estado == "RECHAZADA" and reserva_anterior.estado == "ACEPTADA":
-                    # Si estaba aceptada y se rechaza → se devuelve stock
-                    self.recurso.cantidad += 1
-                    self.recurso.save()
-        else:
-            # Nueva reserva aceptada directamente
-            if self.estado == "ACEPTADA" and self.recurso.cantidad > 0:
-                self.recurso.cantidad -= 1
-                self.recurso.save()
+        # Si la reserva se acepta → crear un préstamo
+        if self.estado == "ACEPTADA":
+            if self.recurso.cantidad > 0:  # Solo si hay stock
+                prestamo = Prestamo.objects.create(
+                    usuario=self.usuario,
+                    recurso=self.recurso,
+                    estado="ACTIVO",
+                    fecha_entrega=timezone.now()
+                )
+                prestamo.save()
+            else:
+                # No hay stock, se deja en pendiente
+                self.estado = "PENDIENTE"
 
         super().save(*args, **kwargs)
+
 

@@ -1,7 +1,8 @@
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from apps.usuarios.models import PerfilUsuario
-from apps.recursos.models import Bien
+from apps.recursos.models import BienMaterial
+
 
 class AsignacionBien(models.Model):
     ESTADOS = (
@@ -11,10 +12,10 @@ class AsignacionBien(models.Model):
     )
 
     usuario = models.ForeignKey(PerfilUsuario, on_delete=models.CASCADE, related_name="asignaciones")
-    bien = models.ForeignKey(Bien, on_delete=models.CASCADE, related_name="asignaciones")
+    bien = models.ForeignKey(BienMaterial, on_delete=models.CASCADE, related_name="asignaciones")
     
     fecha_asignacion = models.DateField(auto_now_add=True)
-    fecha_fin = models.DateField(null=True, blank=True)  # se llena solo al finalizar
+    fecha_fin = models.DateField(null=True, blank=True)
     estado = models.CharField(max_length=20, choices=ESTADOS, default="ASIGNADO")
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -24,29 +25,32 @@ class AsignacionBien(models.Model):
         return f"Asignación {self.id} - {self.usuario.nombre} {self.usuario.apellido} ({self.estado})"
 
     def save(self, *args, **kwargs):
-        """
-        Manejo automático:
-        - Si se crea una asignación, descuenta un bien disponible.
-        - Si pasa a FINALIZADO, devuelve el bien y guarda fecha_fin.
-        - Si pasa a CANCELADO, solo devuelve el bien.
-        """
-        if self.pk is None:  # Nueva asignación
-            if self.bien.cantidad_disp > 0:
+        with transaction.atomic():  # asegura que todo se guarde de manera atómica
+            if self.pk is None:  # Nueva asignación
+                if self.bien.cantidad_disp <= 0:
+                    raise ValueError("No hay stock disponible para este bien.")
                 self.bien.cantidad_disp -= 1
                 self.bien.save()
-        else:
-            asignacion_antigua = AsignacionBien.objects.get(pk=self.pk)
+            else:
+                # Recupera la asignación anterior
+                asignacion_antigua = AsignacionBien.objects.get(pk=self.pk)
 
-            # Cuando pasa de ASIGNADO a FINALIZADO
-            if asignacion_antigua.estado == "ASIGNADO" and self.estado == "FINALIZADO":
-                self.bien.cantidad_disp += 1
-                self.bien.save()
-                self.fecha_fin = timezone.now().date()
+                # Solo actuar si el estado cambia
+                if asignacion_antigua.estado != self.estado:
+                    # De ASIGNADO → FINALIZADO
+                    if asignacion_antigua.estado == "ASIGNADO" and self.estado == "FINALIZADO":
+                        self.bien.cantidad_disp += 1
+                        self.fecha_fin = timezone.now().date()
+                        self.bien.save()
 
-            # Cuando pasa de ASIGNADO a CANCELADO
-            if asignacion_antigua.estado == "ASIGNADO" and self.estado == "CANCELADO":
-                self.bien.cantidad_disp += 1
-                self.bien.save()
-                self.fecha_fin = timezone.now().date()
+                    # De ASIGNADO → CANCELADO
+                    elif asignacion_antigua.estado == "ASIGNADO" and self.estado == "CANCELADO":
+                        self.bien.cantidad_disp += 1
+                        self.fecha_fin = timezone.now().date()
+                        self.bien.save()
 
-        super().save(*args, **kwargs)
+                    # Evitar cambios no válidos: FINALIZADO/CANCELADO → ASIGNADO
+                    elif self.estado == "ASIGNADO":
+                        raise ValueError("No se puede volver a ASIGNADO desde FINALIZADO o CANCELADO.")
+
+            super().save(*args, **kwargs)

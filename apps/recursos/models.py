@@ -59,8 +59,8 @@ class BienMaterial(models.Model):
 
     @property
     def esta_disponible(self):
-        """Disponible solo si hay stock y el estado es DISPONIBLE"""
-        return self.cantidad_disp > 0 and self.estado == 'DISPONIBLE'
+         """Devuelve True si hay stock y el bien está en estado DISPONIBLE."""
+         return self.cantidad_disp > 0 and self.estado == 'DISPONIBLE'
 
     def __str__(self):
         disponibilidad = "Disponible" if self.esta_disponible else "No disponible"

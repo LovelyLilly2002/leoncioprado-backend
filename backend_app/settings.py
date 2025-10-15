@@ -48,7 +48,12 @@ INSTALLED_APPS = [
      'apps.prestamos',
      'apps.asignaciones',
      'apps.notificaciones',
+
+
+     
      ]
+# Modelo de usuario personalizado
+AUTH_USER_MODEL = 'usuarios.Cuenta'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -96,17 +101,15 @@ DATABASES = {
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {
+            'min_length': 4,  # o 6 si quieres más seguridad mínima
+        }
     },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+    # Puedes comentar o eliminar los demás validadores:
+    # {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',},
+    # {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',},
+    # {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',},
 ]
 
 
